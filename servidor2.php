@@ -3,7 +3,7 @@
 echo "<h4>SERVIDOR 2</h4>";
 
 // Parámetros de conexión a la base de datos
-$host = "10.1.2.%";
+$host = "10.1.2.17";
 $db = "cnvr";
 $user = "s2";
 $pass = "xxxx";
