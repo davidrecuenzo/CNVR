@@ -1,47 +1,24 @@
 <?php
 
-echo "<h4>SERVIDOR 2</h4>";
+	echo "<h4>SERVIDOR 2</h4>";
 
-// Parámetros de conexión a la base de datos
-$host = "10.1.2.17";
-$db = "cnvr";
-$user = "s2";
-$pass = "xxxx";
-$link = "";
+	// Parámetros de conexión a la base de datos
+	$dbhost = "10.1.2.17";
+	$dbname = "cnvr";
+	$dbuser = "s2";
+	$dbpass = "xxxx";
+	try{
+		$db = new PDO("mysql:host=$dbhost;dbname=$dbname", $dbuser, $dbpass,
+			      	array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'UTF8'"));
+		$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+	}catch(Exception $error){
+		die("Error conexión BBDD " . $error->getMessage());
+	}
 
-// Conectar al servidor MySQL
-if (!$link = mysql_connect($host,$user,$pass)) {
-    exit("Imposible conectar a la base de datos.");
-}
-
-// Seleccionar base de datos
-if (!mysql_select_db($db,$link)) {
-    exit("Imposible seleccionar base de datos: ".mysql_error($link));
-}
-
-// Seleccionar datos de la tabla "servers"
-$query = "SELECT * FROM servers;";
-if (!$result = mysql_query($query,$link)) {
-    exit("Error al seleccionar datos de la base de datos: ".mysql_error($link));
-}
-
-// Imprimir tabla
+	$sql = "SELECT id, nombre_server FROM servers";
+	foreach ($db->query($sql) as $fila) {
+		print "<br>";
+		print $fila['id'] . "\t";
+		print $fila['nombre_server'] . "\t";
+	}
 ?>
-<p>Ultimos Accesos:</p>
-<table style="border: 1px solid #fff;">
-<tr><th>ID</th><th>Nombre</th></tr>
-<?php
-
-while ($row = mysql_fetch_array($result)) {
-    echo "<tr><td>" . $row['id'] . "</td><td>" . $row['nombre_server'] . "</td></tr>";
-}
-
-?>
-</table>
-<?php
-
-// Cerrar conexión MySQL
-mysql_close();
-
-?>
-<p>-- FIN --</p>
