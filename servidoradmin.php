@@ -5,7 +5,7 @@
 	// Parámetros de conexión a la base de datos
 	$dbhost = "10.1.2.17";
 	$dbname = "cnvr";
-	$dbuser = "s1";
+	$dbuser = "admin";
 	$dbpass = "xxxx";
 	try{
 		$db = new PDO("mysql:host=$dbhost;dbname=$dbname", $dbuser, $dbpass,
