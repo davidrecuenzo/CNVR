@@ -1,0 +1,358 @@
+heat_template_version: 2017-02-24
+
+description: TrabajoFinalCNVR
+
+resources:
+  net1:
+     type: OS::Neutron::Net
+     properties:
+       name: net1
+
+  subnet1:
+        depends_on: [net1]
+        type: OS::Neutron::Subnet
+        properties:
+          name: subnet1
+          network_id: { get_resource: net1 }
+          cidr: 10.1.1.0/24
+          gateway_ip: 10.1.1.1
+
+  net2:
+     type: OS::Neutron::Net
+     properties:
+       name: net2
+
+  subnet2:
+        depends_on: [net2]
+        type: OS::Neutron::Subnet
+        properties:
+          name: subnet2
+          network_id: { get_resource: net2 }
+          cidr: 10.1.2.0/24
+
+  router:
+     type: OS::Neutron::Router
+     properties:
+       name: r0
+       external_gateway_info: 
+          network: ExtNet
+
+  router_interface:
+        depends_on: [router, subnet1]
+        type: OS::Neutron::RouterInterface
+        properties:
+          router_id: { get_resource: router }
+          subnet_id: { get_resource: subnet1 }
+
+  secu_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      rules: [ { remote_ip_prefix: 0.0.0.0/0 } ]
+
+  lb_floating_ip:
+     depends_on: [loadbalancer, router, router_interface, net1, subnet1]
+     type: OS::Neutron::FloatingIP
+     properties:
+       floating_network_id: ExtNet
+       port_id: { get_attr: [loadbalancer, vip_port_id] }
+
+  loadbalancer:
+    depends_on: [subnet1]
+    type: OS::Neutron::LBaaS::LoadBalancer
+    properties:
+      vip_subnet: { get_resource: subnet1 }
+
+  listener_lb:
+     depends_on: [loadbalancer]
+     type: OS::Neutron::LBaaS::Listener
+     properties:
+       loadbalancer: { get_resource: loadbalancer }
+       protocol: HTTP
+       protocol_port: 80
+
+  pool_lb:
+     depends_on: [listener_lb]
+     type: OS::Neutron::LBaaS::Pool
+     properties:
+       lb_algorithm: ROUND_ROBIN
+       protocol: HTTP
+       listener: { get_resource: listener_lb }
+
+  monitor_lb:
+     depends_on: [pool_lb]
+     type: OS::Neutron::LBaaS::HealthMonitor
+     properties:
+       delay: 3
+       type: HTTP
+       timeout: 3
+       max_retries: 3
+       pool: { get_resource: pool_lb }
+
+  server_admin_net1_port:
+     depends_on: [net1, subnet1, secu_group]
+     type: OS::Neutron::Port
+     properties:
+       security_groups: [{ get_resource: secu_group }]
+       network_id: { get_resource: net1}
+       fixed_ips: [ {subnet_id: { get_resource: subnet1 }, ip_address: 10.1.1.13 }]
+
+  server_admin_floating_ip:
+     depends_on: [server_admin_net1_port, router, router_interface, net1, subnet1]
+     type: OS::Neutron::FloatingIP
+     properties:
+       floating_network_id: ExtNet
+       port_id: { get_resource: server_admin_net1_port }
+
+  server_1_net1_port:
+     depends_on: [net1, subnet1, secu_group]
+     type: OS::Neutron::Port
+     properties:
+       security_groups: [{ get_resource: secu_group }]
+       network_id: { get_resource: net1}
+       fixed_ips: [ {subnet_id: { get_resource: subnet1 }, ip_address: 10.1.1.14 }]
+
+  server_2_net1_port:
+     depends_on: [net1, subnet1, secu_group]
+     type: OS::Neutron::Port
+     properties:
+       security_groups: [{ get_resource: secu_group }]
+       network_id: { get_resource: net1}
+       fixed_ips: [ {subnet_id: { get_resource: subnet1 }, ip_address: 10.1.1.15 }]
+
+  server_3_net1_port:
+     depends_on: [net1, subnet1, secu_group]
+     type: OS::Neutron::Port
+     properties:
+       security_groups: [{ get_resource: secu_group }]
+       network_id: { get_resource: net1}
+       fixed_ips: [ {subnet_id: { get_resource: subnet1 }, ip_address: 10.1.1.16 }]
+
+  server_bbdd_net2_port:
+     depends_on: [net2, subnet2, secu_group]
+     type: OS::Neutron::Port
+     properties:
+       security_groups: [{ get_resource: secu_group }]
+       network_id: { get_resource: net2}
+       fixed_ips: [ {subnet_id: { get_resource: subnet2 }, ip_address: 10.1.2.17 }]
+
+  server_admin_ssh_key:
+     type: OS::Nova::KeyPair
+     properties:
+       name: ssh_admin
+       save_private_key: true
+
+  server_s1_ssh_key:
+     type: OS::Nova::KeyPair
+     properties:
+       name: ssh_s1
+       save_private_key: true
+
+  server_s2_ssh_key:
+     type: OS::Nova::KeyPair
+     properties:
+       name: ssh_s2
+       save_private_key: true
+
+  server_s3_ssh_key:
+     type: OS::Nova::KeyPair
+     properties:
+       name: ssh_s3
+       save_private_key: true
+
+  server_bbdd_ssh_key:
+     type: OS::Nova::KeyPair
+     properties:
+       name: ssh_bbdd
+       save_private_key: true
+
+  vm_admin:
+     depends_on: [server_admin_ssh_key, server_admin_net1_port, server_admin_floating_ip, net1, subnet1, net2, subnet2]
+     type: OS::Nova::Server
+     properties:
+       name: admin
+       image: image-xenial-admin
+       flavor: m1.smaller
+       user_data_format: RAW
+       user_data: { get_file: cloud_init/admin.yaml }
+       key_name: { get_resource: server_admin_ssh_key }
+       networks:
+       - port: { get_resource: server_admin_net1_port }
+       - network: { get_resource: net2 }
+
+  vm_s1:
+     depends_on: [server_s1_ssh_key, net1, subnet1, net2, subnet2, secu_group, server_1_net1_port]
+     type: OS::Nova::Server
+     properties:
+       name: s1
+       image: image-xenial-server
+       flavor: m1.smaller
+       user_data_format: RAW
+       user_data: { get_file: cloud_init/server1.yaml }
+       key_name: { get_resource: server_s1_ssh_key }
+       networks:
+       - port: { get_resource: server_1_net1_port }
+       - network: { get_resource: net2 }
+
+  vm_s2:
+     depends_on: [server_s2_ssh_key, net1, subnet1, net2, subnet2, secu_group, server_2_net1_port]
+     type: OS::Nova::Server
+     properties:
+       name: s2
+       image: image-xenial-server
+       flavor: m1.smaller
+       user_data_format: RAW
+       user_data: { get_file: cloud_init/server2.yaml }
+       key_name: { get_resource: server_s2_ssh_key }
+       networks:
+       - port: { get_resource: server_2_net1_port }
+       - network: { get_resource: net2 }
+
+  vm_s3:
+     depends_on: [server_s3_ssh_key, net1, subnet1, net2, subnet2, secu_group, server_3_net1_port]
+     type: OS::Nova::Server
+     properties:
+       name: s3
+       image: image-xenial-server
+       flavor: m1.smaller
+       user_data_format: RAW
+       user_data: { get_file: cloud_init/server3.yaml }
+       key_name: { get_resource: server_s3_ssh_key }
+       networks:
+       - port: { get_resource: server_3_net1_port }
+       - network: { get_resource: net2 }
+
+  vm_bbdd:
+     depends_on: [server_bbdd_ssh_key, net2, subnet2, server_bbdd_net2_port]
+     type: OS::Nova::Server
+     properties:
+       name: bbdd
+       image: image-xenial-bbdd
+       flavor: m1.smaller
+       key_name: { get_resource: server_bbdd_ssh_key }
+       networks:
+       - port: { get_resource: server_bbdd_net2_port }
+
+  poolmember_lb_s1:
+     depends_on: [pool_lb, subnet1, vm_s1]
+     type: OS::Neutron::LBaaS::PoolMember
+     properties:
+       pool: { get_resource: pool_lb }
+       address: 10.1.1.14
+       protocol_port: 80
+       subnet: { get_resource: subnet1 }
+
+  poolmember_lb_s2:
+     depends_on: [pool_lb, subnet1, vm_s2]
+     type: OS::Neutron::LBaaS::PoolMember
+     properties:
+       pool: { get_resource: pool_lb }
+       address: 10.1.1.15
+       protocol_port: 80
+       subnet: { get_resource: subnet1 }
+
+  poolmember_lb_s3:
+     depends_on: [pool_lb, subnet1, vm_s3]
+     type: OS::Neutron::LBaaS::PoolMember
+     properties:
+       pool: { get_resource: pool_lb }
+       address: 10.1.1.16
+       protocol_port: 80
+       subnet: { get_resource: subnet1 }
+
+  my_group:
+     type: OS::Heat::AutoScalingGroup
+     properties:
+       desired_capacity: 3
+       cooldown: 30
+       max_size: 4
+       min_size: 2
+       resource:
+        depends_on: [server_ssh_key, net1, subnet1, net2, subnet2, secu_group ]
+        type: OS::Nova::Server
+        properties:
+        image: image-xenial-server
+        flavor: m1.smaller
+        security_groups: [ secu_group ]
+        user_data_format: RAW
+        user_data: { get_file: cloud_init/server.yaml }
+        key_name: { get_resource: server_ssh_key }
+        networks:
+        - network: { get_resource: net1 }
+        - network: { get_resource: net2 }
+
+  scaleup_policy:
+     type: OS::Heat::ScalingPolicy
+     properties:
+       adjustment_type: change_in_capacity
+       auto_scaling_group_id: { get_resource: my_group }
+       cooldown: 30
+       scaling_adjustment: 1
+
+  scaledown_policy:
+     type: OS::Heat::ScalingPolicy
+     properties:
+       adjustment_type: change_in_capacity
+       auto_scaling_group_id: { get_resource: my_group }
+       cooldown: 30
+       scaling_adjustment: -1
+
+  lb_connection_rate_high:
+     type: OS::Ceilometer::Alarm
+     properties:
+       meter_name: network.services.lb.incoming.bytes
+       statistic: avg
+       period: 60
+       evaluation_periods: 3
+       threshold: 40000
+       alarm_actions:
+        - {get_attr: [scaleup_policy, alarm_url]}
+       comparison_operator: gt
+
+  lb_connection_rate_lo:
+     type: OS::Ceilometer::Alarm
+     properties:
+       meter_name: network.services.lb.incoming.bytes
+       statistic: avg
+       period: 60
+       evaluation_periods: 3
+       threshold: 15000
+       alarm_actions:
+        - {get_attr: [scaledown_policy, alarm_url]}
+       comparison_operator: lt
+
+outputs:
+  server_admin_private_ip:
+    description: Direccion IP privada del servidor admin
+    value: { get_attr: [vm_admin, first_address] }
+
+  server_1_private_ip:
+    description: Direccion IP privada del servidor 1
+    value: { get_attr: [vm_s1, first_address] }
+
+  server_2_private_ip:
+    description: Direccion IP privada del servidor 2
+    value: { get_attr: [vm_s2, first_address] }
+
+  server_3_private_ip:
+    description: Direccion IP privada del servidor 3
+    value: { get_attr: [vm_s3, first_address] }
+
+  bbdd_private_ip:
+    description: Direccion IP privada de la BBDD
+    value: { get_attr: [vm_bbdd, first_address] }
+
+  server_admin_floating_ip:
+    description: Direccion IP flotante de la instancia ADMIN
+    value: { get_attr: [server_admin_floating_ip, floating_ip_address] }
+
+  lb_floating_ip:
+    description: Direccion IP flotante del balanceador de carga
+    value: { get_attr: [lb_floating_ip, floating_ip_address] }
+ 
+  lb_private_ip:
+    description: Direccion IP privada del balanceador de carga
+    value: { get_attr: [loadbalancer, vip_address] }
+
+  tenant_ssh_admin_key:
+    description: Clave privada de la instancia ADMIN
+    value: { get_attr: [server_admin_ssh_key, private_key] }
